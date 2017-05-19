@@ -1,0 +1,470 @@
+
+<html>
+	<head>
+		<title>Mobile Gyro plus threejs</title>
+		<style>
+			body { 
+			  margin: 0; 
+			  background-color: white;
+			}
+			canvas { width: 100%; height: 100% ; }
+			
+			#infoSplotch{
+				position: fixed;
+				top:0px;
+				font-size:80px;
+			}
+			#qautInfoSplotch{
+				position:fixed;
+				bottom:0px;
+				right:0px;
+				font-size:80px;
+			}
+		</style>
+	</head>
+	<body>
+
+    <div id="infoSplotch">
+      alpha: <span id="alpha">placeholder</span><br>
+      beta: <span id="beta">placeholder</span><br>
+      gamma: <span id="gamma">placeholder</span><br>
+      <span id="info"> </span><br>
+    </div>
+    <div id="qautInfoSplotch">
+    x: <span id="x">x</span><br>
+    y: <span id="y">y</span><br>
+    z: <span id="z">z</span><br>
+    w: <span id="w">w</span><br> 
+    </div>
+		<script src="{{ url_for('static', filename='three.min.js') }}"></script>
+ 
+		<script>
+
+			//basic setup
+			var scene = new THREE.Scene();
+			var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+			//args: field of view,aspect ratio (width/height),near clip plane, far clip plane
+			
+			// set a directional light
+			var directionalLight = new THREE.DirectionalLight( 0xffffff, 5 );
+			directionalLight.position.z = 3;
+			scene.add( directionalLight );
+						
+			//var renderer = new THREE.WebGLRenderer();//includes fallbacks for non webgl broswers maybe
+			var renderer = new THREE.WebGLRenderer({ alpha: true }); //alpha true makes background body tag color show up
+			//renderer.setClearColorHex( 0xffffff, 1);
+		//	renderer.setClearColor( 0x000000, 0 ); // the default
+			//renderer.setClearColor( 0xa9db8b );
+			
+			renderer.setSize( window.innerWidth, window.innerHeight );//resolution - note always full size just sharpness is affected - other vals window.innerWidth/2, window.innerHeight/2 same size half resolution
+			document.body.appendChild( renderer.domElement );
+			
+
+			//add a cube
+			
+			var geometry = new THREE.BoxGeometry( 1, 1, 1 );
+			var material = new THREE.MeshBasicMaterial( { color: 0x00ff00, shading: THREE.FlatShading, wireframe: true  } );
+			var cube = new THREE.Mesh( geometry, material );
+			
+			//scene.add( cube );
+			var objectsToDrawTogether = new THREE.Group();//keep everything grouped for rotation transformations later
+			objectsToDrawTogether.add(cube);
+			
+			
+			//add some axis markers
+			var xAxis = new THREE.Mesh( new THREE.BoxGeometry( 3, .1, .1 ), new THREE.MeshBasicMaterial( {color: 0x00ff00} ) ); 
+			objectsToDrawTogether.add( xAxis );
+			var yAxis = new THREE.Mesh( new THREE.BoxGeometry( .1, 3, .1 ), new THREE.MeshBasicMaterial( {color: 0xff0000} ) ); 
+			objectsToDrawTogether.add( yAxis );
+			var zAxis = new THREE.Mesh( new THREE.BoxGeometry( .1, .1, 3 ), new THREE.MeshBasicMaterial( {color: 0x0000ff} ) ); 
+			objectsToDrawTogether.add( zAxis );
+			
+			scene.add(objectsToDrawTogether);
+			
+			
+			
+			/*
+			
+			// cube geometry (200 x 200 x 200 and each segments) with textures;
+			
+			var geometry = new THREE.CubeGeometry(200, 200, 200, 1, 1, 1,
+			[
+			new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture('snoopy_flying_ace.JPG')}), // right
+			new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture('snoopy_flying_ace.JPG')}), // left
+			new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture('snoopy_flying_ace.JPG')}), // top
+			new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture('snoopy_flying_ace.JPG')}), // bottom
+			new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture('snoopy_flying_ace.JPG')}), // back
+			new THREE.MeshBasicMaterial({map: THREE.ImageUtils.loadTexture('snoopy_flying_ace.JPG')}), // front
+			]);
+			var material = new THREE.MeshFaceMaterial();
+			var cubeMesh = new THREE.Mesh( geometry, material);
+			scene.add( cubeMesh );
+			*/
+
+			camera.position.z = 5; //positive numbers means backwards in this case
+			
+			
+
+			
+		
+			//get mobile gyro stuff
+			//http://stackoverflow.com/questions/4378435/how-to-access-accelerometer-gyroscope-data-from-javascript
+/*
+//get orientation info, rolling back if gyro info not available
+if (window.DeviceOrientationEvent) {//
+    window.addEventListener("deviceorientation", function () {//gyro
+        gyroEvent(event.alpha, event.beta, event.gamma ); //z,x,y (z 0-360 -- x weird -- y also weird -90 ~ 90 )
+    }, true);
+} 
+
+else if (window.DeviceMotionEvent) {
+    window.addEventListener('devicemotion', function () {//accelerometer
+        gyroEvent( event.acceleration.x * 2, event.acceleration.y * 2, event.acceleration.z * 2);
+    }, true);
+} else {
+    window.addEventListener("MozOrientation", function () {//mozilla accelleromter deprecated
+        gyroEvent( orientation.x * 50, orientation.y * 50, orientation.z * 50);
+    }, true);
+}*/
+
+var deviceOrientationData ={alpha:0,beta:0,gamma:0};//defaults
+var gyro={x:0,y:0,z:0,w:0};
+//var gyroQuot = new THREE.Quaternion(); //global holder for gyro info i quaternion form
+var degtorad = Math.PI / 180; // Degree-to-Radian conversion
+
+
+
+
+if (window.DeviceOrientationEvent && 'ontouchstart' in window)//
+{
+	  window.addEventListener('deviceorientation', function( event ) {
+		  deviceOrientationData = event;
+		  document.getElementById("alpha").innerHTML=deviceOrientationData.alpha.toFixed(0);//shorten up those really long numbers
+		  document.getElementById("beta").innerHTML=deviceOrientationData.beta.toFixed(0);
+		  document.getElementById("gamma").innerHTML=deviceOrientationData.gamma.toFixed(0);
+		  
+		gyro=computeQuaternionFromEulers(
+		  deviceOrientationData.alpha,
+		  deviceOrientationData.beta,
+		  deviceOrientationData.gamma);
+		  
+		 document.getElementById("x").innerHTML=gyro.x.toFixed(5);
+		 document.getElementById("y").innerHTML=gyro.y.toFixed(5);
+		 document.getElementById("z").innerHTML=gyro.z.toFixed(5);
+		 document.getElementById("w").innerHTML=gyro.w.toFixed(5);
+		
+
+	  }, true)
+}else{//some defaults for browsers without gyros
+	//console.log("anything??");//never shows. even machines that don't create device orientation still events still claim they do?
+	document.getElementById("infoSplotch").innerHTML="Device is not mobile and/or capable of handling device orientation events properly";
+}
+
+
+
+
+
+
+var currentScreenOrientation = window.orientation || 0; // active default
+
+document.getElementById("info").innerHTML=currentScreenOrientation;
+//var gyroEventCtr=0;
+//var frameCtr=0;
+
+window.addEventListener('orientationchange', function() {
+	currentScreenOrientation = window.orientation;
+	//document.getElementById("info").innerHTML=currentScreenOrientation;
+}, false);
+
+function rotatoeX(alpha,beta,gamma)
+{
+	cube.rotation.z=degreeToRadian(alpha-180 ); //0-(alpha/20);
+	cube.rotation.x=degreeToRadian (beta);//y/10;
+	cube.rotation.y= degreeToRadian(-gamma);//x/10;
+}
+
+function rotatoe(alpha,beta,gamma)//reverse - this is so close but it gimble locks
+{
+	cube.rotation.y= -degreeToRadian(gamma);//x/10;
+	cube.rotation.x= -degreeToRadian(beta);//y/10;
+	cube.rotation.z= -degreeToRadian(alpha); //0-(alpha/20);
+}
+
+
+function computeQuaternionFromEulers(alpha,beta,gamma)//Alpha around Z axis, beta around X axis and gamma around Y axis intrinsic local space in that order(each axis moves depending on how the other moves so processing order is important)
+{
+	/*
+	//create 3 quatornions to hold the rotation data
+	var zQuot = new THREE.Quaternion(); 
+	zQuot.setFromAxisAngle( new THREE.Vector3( 0, 0, 1 ), degreeToRadian(alpha) );
+	var xQuot = new THREE.Quaternion(); 
+	xQuot.setFromAxisAngle( new THREE.Vector3( 1, 0, 0 ), degreeToRadian(beta) );
+	var yQuot = new THREE.Quaternion(); 
+	yQuot.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), degreeToRadian(gamma) );
+	//mutiply these 3 together to get final rotation quaternion (there's probably a more efficient way to do all this)
+	var tempQuot = new THREE.Quaternion();
+	gyroQuot.multiplyQuaternions(xQuot,zQuot);
+	gyroQuot.normalize();
+	gyroQuot.multiply(yQuot);
+	gyroQuot.normalize();
+	//reuse tempQuot for something else here (invert gyroquot)
+	tempQuot= gyroQuot;
+	tempQuot.inverse();
+	tempQuot.normalize();
+	
+	cube.setRotationFromQuaternion(gyroQuot);
+	cube.quaternion.normalize();//camera
+	
+	//gyroQuot.setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), Math.PI / 2 );
+	//cube.rotation.y= -degreeToRadian(gamma);//x/10;
+	//cube.rotation.x= -degreeToRadian(beta);//y/10;
+	//cube.rotation.z= -degreeToRadian(alpha); //0-(alpha/20);
+	
+	*/
+
+	
+
+//https://dev.opera.com/articles/w3c-device-orientation-usage/
+	
+
+
+	/*
+	var _x = beta  ? beta * degtorad : 0; // beta value
+	var _y = gamma ? gamma * degtorad : 0; // gamma value
+	var _z = alpha ? alpha * degtorad : 0; // alpha value
+	*/
+	var _x = beta * degtorad ; // beta value
+	var _y = gamma * degtorad ; // gamma value
+	var _z = alpha * degtorad ; // alpha value
+
+	var cX = Math.cos( _x/2 );
+	var cY = Math.cos( _y/2 );
+	var cZ = Math.cos( _z/2 );
+	var sX = Math.sin( _x/2 );
+	var sY = Math.sin( _y/2 );
+	var sZ = Math.sin( _z/2 );
+
+	//
+	// ZXY quaternion construction.
+	//
+
+	var w = cX * cY * cZ - sX * sY * sZ;
+	var x = sX * cY * cZ - cX * sY * sZ;
+	var y = cX * sY * cZ + sX * cY * sZ;
+	var z = cX * cY * sZ + sX * sY * cZ;
+
+	//return [ w, x, y, z ];
+	return {"x":x,"y":y,"z":z,"w":w};//return a simple object with the four quaternion values
+	
+}
+
+function getScreenTransformationQuaternion( screenOrientation ) {
+	var orientationAngle = screenOrientation ? screenOrientation * degtorad : 0;
+
+	var minusHalfAngle = - orientationAngle / 2;
+
+	// Construct the screen transformation quaternion
+	var q_s = [
+		Math.cos( minusHalfAngle ),
+		0,
+		0,
+		Math.sin( minusHalfAngle )
+	];
+
+	return q_s;
+}
+
+function getOrientationRotationAdjustmentQuaternnion() 
+{
+	var orientationAngle = currentScreenOrientation * degtorad ;
+
+	var minusHalfAngle = - orientationAngle / 2;
+
+	// Construct the screen transformation quaternion
+	var q_s = [
+		Math.cos( minusHalfAngle ),
+		0,
+		0,
+		Math.sin( minusHalfAngle )
+	];
+
+	//return q_s;
+	return {w:q_s[0],x:q_s[1],y:q_s[2],z:q_s[3]};
+}
+
+function getWorldTransformationQuaternion() {
+	var worldAngle = 90 * degtorad;
+
+	var minusHalfAngle = - worldAngle / 2;
+
+	// Construct the world transformation quaternion
+	var q_w = [
+		Math.cos( minusHalfAngle ),
+		Math.sin( minusHalfAngle ),
+		0,
+		0
+	];
+
+	return q_w;
+}
+
+var worldXformQ={x:Math.sin( -(90 * degtorad)/2 ),y:0,z:0,w:Math.cos( -(90 * degtorad)/2 )};//rotates on x 90 degrees
+
+function quaternionMultiplyOld( a, b ) {
+	
+	var w = a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3];
+	var x = a[1] * b[0] + a[0] * b[1] + a[2] * b[3] - a[3] * b[2];
+	var y = a[2] * b[0] + a[0] * b[2] + a[3] * b[1] - a[1] * b[3];
+	var z = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+
+	return [ w, x, y, z ];
+	
+}
+
+function quaternionMultiplyMistake(quaternionArray)// multiplies 2 or more quatoernions together (last-to-first order)
+{	
+	//var qSoFar = quaternionArray[quaternionArray.length-1];//javascript passes objects by reference so this is troublesome
+	var temp = quaternionArray[quaternionArray.length-1];
+	var qSoFar ={x:temp.x,y:temp.y,z:temp.z,w:temp.w};
+		
+	for(var i=quaternionArray.length-2 ;i >=0 ;i --)
+	{
+		//var nextQ=quaternionArray[i];
+		var temp2=quaternionArray[i];
+		var nextQ={x:temp2.x,y:temp2.y,z:temp2.z,w:temp2.w};
+		//ww,x,y,z
+		var w = nextQ.w * qSoFar.w - nextQ.x * qSoFar.x - nextQ.y * qSoFar.y - nextQ.z * qSoFar.z;
+		var x = nextQ.x * qSoFar.w + nextQ.w * qSoFar.x + nextQ.y * qSoFar.z - nextQ.z * qSoFar.y;
+		var y = nextQ.y * qSoFar.w + nextQ.w * qSoFar.y + nextQ.z * qSoFar.x - nextQ.x * qSoFar.z;
+		var z = nextQ.z * qSoFar.w + nextQ.w * qSoFar.z + nextQ.x * qSoFar.y - nextQ.y * qSoFar.x;
+		
+		qSoFar.x=x;
+		qSoFar.y=y;
+		qSoFar.z=z;
+		qSoFar.w=w;
+	}
+	
+	return qSoFar;
+}
+
+function quaternionMultiply(quaternionArray)// multiplies 2 or more quatoernions together (last-to-first order)
+{	
+	//var qSoFar = quaternionArray[quaternionArray.length-1];//javascript passes objects by reference so this is troublesome
+	var temp = quaternionArray[0];
+	var qSoFar ={x:temp.x,y:temp.y,z:temp.z,w:temp.w};
+		
+	for(var i=1 ;i < quaternionArray.length ;i ++)
+	{
+		//var nextQ=quaternionArray[i];
+		var temp2=quaternionArray[i];
+		var next={x:temp2.x,y:temp2.y,z:temp2.z,w:temp2.w};
+		//ww,x,y,z
+		var w = qSoFar.w * next.w - qSoFar.x * next.x - qSoFar.y * next.y - qSoFar.z * next.z;
+		var x = qSoFar.x * next.w + qSoFar.w * next.x + qSoFar.y * next.z - qSoFar.z * next.y;
+		var y = qSoFar.y * next.w + qSoFar.w * next.y + qSoFar.z * next.x - qSoFar.x * next.z;
+		var z = qSoFar.z * next.w + qSoFar.w * next.z + qSoFar.x * next.y - qSoFar.y * next.x;
+		
+		qSoFar.x=x;
+		qSoFar.y=y;
+		qSoFar.z=z;
+		qSoFar.w=w;
+	}
+	
+	return qSoFar;
+}
+
+function inverseQuaternion(q)
+{
+	return {"x":q.x,"y":q.y,"z":q.z,"w": -q.w};
+}
+
+function computeOrientationQuaternion() {
+	/*
+	var quaternion = computeQuaternionFromEulers(
+		deviceOrientationData.alpha,
+		deviceOrientationData.beta,
+		deviceOrientationData.gamma);// q
+		*/
+
+	var quaternion = gyro;
+	
+	//var worldTransform = getWorldTransformationQuaternion(); // q_w
+
+	//var worldAdjustedQuaternion = quaternionMultiplyOld( quaternion, worldTransform ); // q'_w
+
+	//var screenTransform = getScreenTransformationQuaternion( currentScreenOrientation ); // q_s
+
+	//var finalQuaternion = quaternionMultiplyOld( worldAdjustedQuaternion, screenTransform ); // q'_s
+
+	//return finalQuaternion; // [ w, x, y, z ]
+	
+	//return quaternion;
+	
+	var invertedQ=inverseQuaternion(quaternion);
+	return invertedQ;
+	//var tmp={x:0,y:0,z:0,w:1};//nothing quaternion
+	//return quaternionMultiply([invertedQ,worldXformQ,inverseQuaternion(getOrientationRotationAdjustmentQuaternnion())]);//order is important when multiplying quaternions. reference 1st, most recent change last
+	
+
+}
+
+function degreeToRadian(deg)
+{
+	return deg * Math.PI/180;
+}
+	
+//keyboard input
+document.onkeydown = handleKeyDown;
+//document.onkeyup = handleKeyUp;
+// 6.2/8 you can either say its 6.2 split up into 8 pieces -or- 6.2 sets of .125  -or- 6.2 out of a total 8 as a percent but 
+
+function handleKeyDown(event) 
+{
+    if (String.fromCharCode(event.keyCode) == "X") //88
+	{
+		cube.rotation.x += .2;
+    
+    }
+	
+	if (String.fromCharCode(event.keyCode) == "Y") //89
+	{
+		cube.rotation.y += .2;
+    
+    }
+	
+	if (String.fromCharCode(event.keyCode) == "Z") //90
+	{
+		cube.rotation.z += .2;
+    
+    }
+  }
+  
+//render loop
+function render() {
+	requestAnimationFrame( render );//better than set interval as it pauses when browser isn't active
+	
+	
+	var q=computeOrientationQuaternion(); //w,x,y,z
+	var quot = new THREE.Quaternion(); 
+	//quot.set(q[1],q[2],q[3],q[0]); //x,y,z,w
+	quot.set(q.x,q.y,q.z,q.w);//x,y,z,w
+	
+	//cube.rotation.x += 0.07;
+	cube.rotation.y += 0.1;
+	//quot.inverse();
+	/*
+	cube.setRotationFromQuaternion(quot);
+	xAxis.setRotationFromQuaternion(quot);
+	yAxis.setRotationFromQuaternion(quot);
+	zAxis.setRotationFromQuaternion(quot);
+	*/
+	objectsToDrawTogether.setRotationFromQuaternion(quot);
+	renderer.render( scene, camera );
+}
+render();
+			
+		</script>
+
+	</body>
+</html>
+
